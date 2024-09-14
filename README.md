@@ -38,7 +38,7 @@ I intend to use two microservices and an API Gateway:
 
 ## System Architecture Diagram
 
-![](fitness-goal-tracker/scheme.png)
+![](scheme.png)
 
 ## Technology Stack
 
