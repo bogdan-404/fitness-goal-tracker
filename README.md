@@ -9,6 +9,7 @@ Zlatovcen Bogdan, FAF 212
 3. [Diagram](#system-architecture-diagram)
 4. [Technology Stack](#technology-stack)
 5. [Data Management](#data-management)
+6. [Deplyoment](#deployment)
 
 ## Application Suitability
 
@@ -39,6 +40,12 @@ I intend to use two microservices and an API Gateway:
 ## System Architecture Diagram
 
 ![](scheme.png)
+
+Key features to develop:
+
+- **WebSockets**: Implement live chat and group sessions, and send immediate allerts when a goal is acheived
+- **Unit Testing**: Write unit tests using pytest for Python services and Jest for the NestJS. 
+- **Circuit Breaker**: Use a circuit breaker library in services, configured to log (circuit breaker will log a failure event) and trip (all the calls to a service are forbidden after 3 errors) within a specified time frame. 
 
 ## Technology Stack
 
@@ -236,3 +243,8 @@ Group sessions will use WebSockets for real-time interaction:
        "data": "object"
      }
      ```
+
+## Deployment
+
+   - **Containerization**: Create separate Dockerfiles for each service. Each Dockerfile will specify the image (Python for Django, NodeJS for NestJS) and define the command to run the service.
+   - **Docker Compose**: Write a docker-compose.yml file to define and run the multiple container application. 
