@@ -2,39 +2,37 @@ const express = require('express');
 const grpc = require('@grpc/grpc-js');
 const protoLoader = require('@grpc/proto-loader');
 const redis = require('redis');
+const http = require('http');
+const socketIo = require('socket.io');
 const path = require('path');
 
-// Load Protobuf definitions
-const PROTO_PATH = path.join(__dirname, '../proto/user_service.proto');
+// Redis client for caching
+const redisClient = redis.createClient();
 
-const packageDefinition = protoLoader.loadSync(PROTO_PATH, {
-  keepCase: true,
-  longs: String,
-  enums: String,
-  defaults: true,
-  oneofs: true
-});
-const userProto = grpc.loadPackageDefinition(packageDefinition).UserService;
+// Load Protobuf definitions for User and Activity services
+const userProtoPath = path.join(__dirname, '../proto/user_service.proto');
+const activityProtoPath = path.join(__dirname, '../proto/activity_service.proto');
 
-const app = express();
-app.use(express.json());
+const userPackageDefinition = protoLoader.loadSync(userProtoPath, { keepCase: true });
+const activityPackageDefinition = protoLoader.loadSync(activityProtoPath, { keepCase: true });
 
-// gRPC client for User Service
+const userProto = grpc.loadPackageDefinition(userPackageDefinition).UserService;
+const activityProto = grpc.loadPackageDefinition(activityPackageDefinition).ActivityService;
+
+// Create gRPC clients for User and Activity services
 const userClient = new userProto('localhost:50051', grpc.credentials.createInsecure());
+const activityClient = new activityProto('localhost:50052', grpc.credentials.createInsecure());
 
-// Example API route to register user
-app.post('/users/register', (req, res) => {
-  const { username, email, password } = req.body;
+// Express and WebSocket setup
+const app = express();
+const server = http.createServer(app);
+const io = socketIo(server);
 
-  userClient.RegisterUser({ username, email, password }, (err, response) => {
-    if (err) {
-      res.status(500).send(err);
-    } else {
-      res.json(response);
-    }
-  });
-});
+// Setup routes
+require('./routes/gateway')(app, userClient, activityClient, redisClient);
+require('./routes/websockets')(io, redisClient);
 
-app.listen(8080, () => {
+// Start the HTTP server (API Gateway) on port 8080
+server.listen(8080, () => {
   console.log('API Gateway running on port 8080');
 });

@@ -2,6 +2,7 @@ syntax = "proto3";
 
 service UserService {
   rpc RegisterUser (UserRequest) returns (UserResponse);
+  rpc SetGoal (GoalRequest) returns (GoalResponse);
 }
 
 message UserRequest {
@@ -14,4 +15,15 @@ message UserResponse {
   string user_id = 1;
   string username = 2;
   string email = 3;
+}
+
+message GoalRequest {
+  string user_id = 1;
+  string goal_type = 2;
+  int32 target_value = 3;
+  string target_date = 4;
+}
+
+message GoalResponse {
+  string goal_id = 1;
 }
