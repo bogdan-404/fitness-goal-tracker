@@ -32,6 +32,11 @@ const io = socketIo(server);
 require('./routes/gateway')(app, userClient, activityClient, redisClient);
 require('./routes/websockets')(io, redisClient);
 
+// Status route to check if API Gateway is running
+app.get('/status', (req, res) => {
+  res.status(200).json({ status: 'API Gateway is running' });
+});
+
 // Start the HTTP server (API Gateway) on port 8080
 server.listen(8080, () => {
   console.log('API Gateway running on port 8080');
