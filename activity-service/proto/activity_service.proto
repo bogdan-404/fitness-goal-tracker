@@ -2,6 +2,7 @@ syntax = "proto3";
 
 service ActivityService {
   rpc StartWorkoutSession (WorkoutRequest) returns (WorkoutResponse);
+  rpc EndWorkoutSession (WorkoutRequest) returns (WorkoutResponse);
 }
 
 message WorkoutRequest {

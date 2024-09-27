@@ -24,7 +24,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x16\x61\x63tivity_service.proto\"7\n\x0eWorkoutRequest\x12\x0f\n\x07user_id\x18\x01 \x01(\t\x12\x14\n\x0cworkout_type\x18\x02 \x01(\t\"9\n\x0fWorkoutResponse\x12\x12\n\nsession_id\x18\x01 \x01(\t\x12\x12\n\nstart_time\x18\x02 \x01(\t2K\n\x0f\x41\x63tivityService\x12\x38\n\x13StartWorkoutSession\x12\x0f.WorkoutRequest\x1a\x10.WorkoutResponseb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x16\x61\x63tivity_service.proto\"7\n\x0eWorkoutRequest\x12\x0f\n\x07user_id\x18\x01 \x01(\t\x12\x14\n\x0cworkout_type\x18\x02 \x01(\t\"9\n\x0fWorkoutResponse\x12\x12\n\nsession_id\x18\x01 \x01(\t\x12\x12\n\nstart_time\x18\x02 \x01(\t2\x83\x01\n\x0f\x41\x63tivityService\x12\x38\n\x13StartWorkoutSession\x12\x0f.WorkoutRequest\x1a\x10.WorkoutResponse\x12\x36\n\x11\x45ndWorkoutSession\x12\x0f.WorkoutRequest\x1a\x10.WorkoutResponseb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -35,6 +35,6 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_WORKOUTREQUEST']._serialized_end=81
   _globals['_WORKOUTRESPONSE']._serialized_start=83
   _globals['_WORKOUTRESPONSE']._serialized_end=140
-  _globals['_ACTIVITYSERVICE']._serialized_start=142
-  _globals['_ACTIVITYSERVICE']._serialized_end=217
+  _globals['_ACTIVITYSERVICE']._serialized_start=143
+  _globals['_ACTIVITYSERVICE']._serialized_end=274
 # @@protoc_insertion_point(module_scope)

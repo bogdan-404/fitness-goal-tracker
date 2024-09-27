@@ -24,7 +24,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x12user_service.proto\"@\n\x0bUserRequest\x12\x10\n\x08username\x18\x01 \x01(\t\x12\r\n\x05\x65mail\x18\x02 \x01(\t\x12\x10\n\x08password\x18\x03 \x01(\t\"@\n\x0cUserResponse\x12\x0f\n\x07user_id\x18\x01 \x01(\t\x12\x10\n\x08username\x18\x02 \x01(\t\x12\r\n\x05\x65mail\x18\x03 \x01(\t2:\n\x0bUserService\x12+\n\x0cRegisterUser\x12\x0c.UserRequest\x1a\r.UserResponseb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x12user_service.proto\"@\n\x0bUserRequest\x12\x10\n\x08username\x18\x01 \x01(\t\x12\r\n\x05\x65mail\x18\x02 \x01(\t\x12\x10\n\x08password\x18\x03 \x01(\t\"@\n\x0cUserResponse\x12\x0f\n\x07user_id\x18\x01 \x01(\t\x12\x10\n\x08username\x18\x02 \x01(\t\x12\r\n\x05\x65mail\x18\x03 \x01(\t\"\\\n\x0bGoalRequest\x12\x0f\n\x07user_id\x18\x01 \x01(\t\x12\x11\n\tgoal_type\x18\x02 \x01(\t\x12\x14\n\x0ctarget_value\x18\x03 \x01(\x05\x12\x13\n\x0btarget_date\x18\x04 \x01(\t\"\x1f\n\x0cGoalResponse\x12\x0f\n\x07goal_id\x18\x01 \x01(\t2b\n\x0bUserService\x12+\n\x0cRegisterUser\x12\x0c.UserRequest\x1a\r.UserResponse\x12&\n\x07SetGoal\x12\x0c.GoalRequest\x1a\r.GoalResponseb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -35,6 +35,10 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_USERREQUEST']._serialized_end=86
   _globals['_USERRESPONSE']._serialized_start=88
   _globals['_USERRESPONSE']._serialized_end=152
-  _globals['_USERSERVICE']._serialized_start=154
-  _globals['_USERSERVICE']._serialized_end=212
+  _globals['_GOALREQUEST']._serialized_start=154
+  _globals['_GOALREQUEST']._serialized_end=246
+  _globals['_GOALRESPONSE']._serialized_start=248
+  _globals['_GOALRESPONSE']._serialized_end=279
+  _globals['_USERSERVICE']._serialized_start=281
+  _globals['_USERSERVICE']._serialized_end=379
 # @@protoc_insertion_point(module_scope)
