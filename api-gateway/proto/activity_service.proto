@@ -1,16 +1,39 @@
 syntax = "proto3";
 
+package activity_service;
+
 service ActivityService {
   rpc StartWorkoutSession (WorkoutRequest) returns (WorkoutResponse);
-  rpc EndWorkoutSession (WorkoutRequest) returns (WorkoutResponse);
+  rpc EndWorkoutSession (SessionRequest) returns (WorkoutResponse);
+  rpc VoteWorkout (VoteRequest) returns (VoteResponse);
+  rpc CountVotes (SessionRequest) returns (CountVotesResponse);
 }
 
 message WorkoutRequest {
   string user_id = 1;
-  string workout_type = 2;
+}
+
+message SessionRequest {
+  string session_id = 1;
 }
 
 message WorkoutResponse {
   string session_id = 1;
   string start_time = 2;
+}
+
+message VoteRequest {
+  string session_id = 1;
+  string user_id = 2;
+  string workout_type = 3;
+  int32 duration = 4;
+}
+
+message VoteResponse {
+  string message = 1;
+}
+
+message CountVotesResponse {
+  string workout_type = 1;
+  int32 duration = 2;
 }

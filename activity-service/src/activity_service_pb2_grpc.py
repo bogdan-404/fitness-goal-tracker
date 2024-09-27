@@ -35,14 +35,24 @@ class ActivityServiceStub(object):
             channel: A grpc.Channel.
         """
         self.StartWorkoutSession = channel.unary_unary(
-                '/ActivityService/StartWorkoutSession',
+                '/activity_service.ActivityService/StartWorkoutSession',
                 request_serializer=activity__service__pb2.WorkoutRequest.SerializeToString,
                 response_deserializer=activity__service__pb2.WorkoutResponse.FromString,
                 _registered_method=True)
         self.EndWorkoutSession = channel.unary_unary(
-                '/ActivityService/EndWorkoutSession',
-                request_serializer=activity__service__pb2.WorkoutRequest.SerializeToString,
+                '/activity_service.ActivityService/EndWorkoutSession',
+                request_serializer=activity__service__pb2.SessionRequest.SerializeToString,
                 response_deserializer=activity__service__pb2.WorkoutResponse.FromString,
+                _registered_method=True)
+        self.VoteWorkout = channel.unary_unary(
+                '/activity_service.ActivityService/VoteWorkout',
+                request_serializer=activity__service__pb2.VoteRequest.SerializeToString,
+                response_deserializer=activity__service__pb2.VoteResponse.FromString,
+                _registered_method=True)
+        self.CountVotes = channel.unary_unary(
+                '/activity_service.ActivityService/CountVotes',
+                request_serializer=activity__service__pb2.SessionRequest.SerializeToString,
+                response_deserializer=activity__service__pb2.CountVotesResponse.FromString,
                 _registered_method=True)
 
 
@@ -61,6 +71,18 @@ class ActivityServiceServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def VoteWorkout(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def CountVotes(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_ActivityServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -71,14 +93,24 @@ def add_ActivityServiceServicer_to_server(servicer, server):
             ),
             'EndWorkoutSession': grpc.unary_unary_rpc_method_handler(
                     servicer.EndWorkoutSession,
-                    request_deserializer=activity__service__pb2.WorkoutRequest.FromString,
+                    request_deserializer=activity__service__pb2.SessionRequest.FromString,
                     response_serializer=activity__service__pb2.WorkoutResponse.SerializeToString,
+            ),
+            'VoteWorkout': grpc.unary_unary_rpc_method_handler(
+                    servicer.VoteWorkout,
+                    request_deserializer=activity__service__pb2.VoteRequest.FromString,
+                    response_serializer=activity__service__pb2.VoteResponse.SerializeToString,
+            ),
+            'CountVotes': grpc.unary_unary_rpc_method_handler(
+                    servicer.CountVotes,
+                    request_deserializer=activity__service__pb2.SessionRequest.FromString,
+                    response_serializer=activity__service__pb2.CountVotesResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
-            'ActivityService', rpc_method_handlers)
+            'activity_service.ActivityService', rpc_method_handlers)
     server.add_generic_rpc_handlers((generic_handler,))
-    server.add_registered_method_handlers('ActivityService', rpc_method_handlers)
+    server.add_registered_method_handlers('activity_service.ActivityService', rpc_method_handlers)
 
 
  # This class is part of an EXPERIMENTAL API.
@@ -99,7 +131,7 @@ class ActivityService(object):
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/ActivityService/StartWorkoutSession',
+            '/activity_service.ActivityService/StartWorkoutSession',
             activity__service__pb2.WorkoutRequest.SerializeToString,
             activity__service__pb2.WorkoutResponse.FromString,
             options,
@@ -126,9 +158,63 @@ class ActivityService(object):
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/ActivityService/EndWorkoutSession',
-            activity__service__pb2.WorkoutRequest.SerializeToString,
+            '/activity_service.ActivityService/EndWorkoutSession',
+            activity__service__pb2.SessionRequest.SerializeToString,
             activity__service__pb2.WorkoutResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def VoteWorkout(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/activity_service.ActivityService/VoteWorkout',
+            activity__service__pb2.VoteRequest.SerializeToString,
+            activity__service__pb2.VoteResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def CountVotes(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/activity_service.ActivityService/CountVotes',
+            activity__service__pb2.SessionRequest.SerializeToString,
+            activity__service__pb2.CountVotesResponse.FromString,
             options,
             channel_credentials,
             insecure,

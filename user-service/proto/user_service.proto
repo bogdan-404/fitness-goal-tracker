@@ -1,14 +1,17 @@
 syntax = "proto3";
 
+package user_service;
+
 service UserService {
   rpc RegisterUser (UserRequest) returns (UserResponse);
-  rpc SetGoal (GoalRequest) returns (GoalResponse);
+  rpc GetUserGoal (GoalRequest) returns (GoalResponse);
 }
 
 message UserRequest {
   string username = 1;
   string email = 2;
   string password = 3;
+  string goal = 4;
 }
 
 message UserResponse {
@@ -19,11 +22,8 @@ message UserResponse {
 
 message GoalRequest {
   string user_id = 1;
-  string goal_type = 2;
-  int32 target_value = 3;
-  string target_date = 4;
 }
 
 message GoalResponse {
-  string goal_id = 1;
+  string goal_type = 1;
 }
