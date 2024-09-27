@@ -19,7 +19,7 @@ The Fitness Goal Tracker is well-suited for a microservices architecture due to 
 
 2. **Scalability**: Different components may experience varying loads and thus requiring independent scaling.
 
-3. **Technology Diversity**: Using different technologies : Python (Django framework) and NodeJs (NestJS framework) allows for choosing the best tool for each service.
+3. **Technology Diversity**: Using different technologies : Python (Flask framework) and NodeJs allows for choosing the best tool for each service.
 
 4. **Future Extensibility**: It is easier to add new features and integrate external services like nutrition APIs.
 
@@ -43,8 +43,8 @@ I intend to use two microservices and an API Gateway:
 
 Key features to develop:
 
-- **WebSockets**: Implement live chat and group sessions, and send immediate allerts when a goal is acheived
-- **Unit Testing**: Write unit tests using pytest for Python services and Jest for the NestJS. 
+- **WebSockets**: Implement group sessions, and develop a voting system
+- **Unit Testing**: Write unit tests using pytest for Python services and Jest for the NodeJS. 
 - **Circuit Breaker**: Use a circuit breaker library in services, configured to log (circuit breaker will log a failure event) and trip (all the calls to a service are forbidden after 3 errors) within a specified time frame. 
 
 ## Technology Stack
@@ -52,15 +52,15 @@ Key features to develop:
 1. **User Service**
 
    - Language: Python
-   - Framework: Django
-   - Database: PostgreSQL
+   - Framework: Flask
+   - Database: SQLLite3
 
-     We use PostgreSQL as it is a relational database, suitable for structured user data. We will use for authentification, and profile management.
+     We use SQLLite3 as it is a relational database, suitable for structured user data. We will use for authentification, and profile management.
 
 2. **Activity Tracking Service**
 
    - Language: Python
-   - Framework: Django
+   - Framework: Flask
    - Database: MongoDB
 
      We use Mongo as it is no SQL database, ideal for storing varied workout data. Flexible schema allows for easy addition of new types of activities/metrics.
@@ -68,7 +68,6 @@ Key features to develop:
 3. **API Gateway**
 
    - Language: Node.js
-   - Framework: NestJS
 
      We will use load balancer in the API gateway to distribute incoming requests to multiple instances of each service.
 
