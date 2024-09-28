@@ -39,7 +39,15 @@ app.use(express.json());
 
 // WebSocket Setup
 const server = http.createServer(app);
-const io = socketIo(server);
+const io = socketIo(server, {
+    cors: {
+        origin: '*', // Allow connections from any origin
+        methods: ['GET', 'POST'],
+        transports: ['websocket', 'polling'],
+        credentials: true
+    },
+    allowEIO3: true  // Use Engine.IO v3 for compatibility
+});
 
 // Simple status endpoint for API Gateway
 app.get('/status', (req, res) => {

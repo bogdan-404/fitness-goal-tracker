@@ -1,7 +1,7 @@
 import grpc
 from concurrent import futures
 import time
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request, g
 import threading
 import user_service_pb2_grpc as pb2_grpc
 import user_service_pb2 as pb2
@@ -15,8 +15,20 @@ goals_db = {
     'maintain physical form': ['Jogging', 'Stretching']
 }
 
-# Flask app for status check
+# Flask app for status check and timeouts
 app = Flask(__name__)
+
+@app.before_request
+def before_request():
+    g.start_time = time.time()
+
+@app.after_request
+def after_request(response):
+    total_time = time.time() - g.start_time
+    if total_time > 5:  # Simulate timeout
+        response.status_code = 504
+        response.data = "Request Timeout"
+    return response
 
 @app.route('/status', methods=['GET'])
 def status():

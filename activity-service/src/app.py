@@ -1,7 +1,7 @@
 import grpc
 from concurrent import futures
 import time
-from flask import Flask, jsonify
+from flask import Flask, jsonify, g
 import threading
 import activity_service_pb2_grpc as pb2_grpc
 import activity_service_pb2 as pb2
@@ -14,8 +14,20 @@ client = MongoClient('mongodb://localhost:27017/')
 db = client['activity_db']
 workout_collection = db['workouts']
 
-# Flask app for status check
+# Flask app for status check and timeouts
 app = Flask(__name__)
+
+@app.before_request
+def before_request():
+    g.start_time = time.time()
+
+@app.after_request
+def after_request(response):
+    total_time = time.time() - g.start_time
+    if total_time > 5:  # Simulate timeout
+        response.status_code = 504
+        response.data = "Request Timeout"
+    return response
 
 @app.route('/status', methods=['GET'])
 def status():
@@ -28,14 +40,20 @@ class ActivityService(pb2_grpc.ActivityServiceServicer):
         self.user_stub = user_pb2_grpc.UserServiceStub(self.user_channel)
     
     def StartWorkoutSession(self, request, context):
-        # Get user goal from User Service
-        user_goal_response = self.user_stub.GetUserGoal(user_pb2.GoalRequest(user_id=request.user_id))
-        user_goal = user_goal_response.goal_type
+        try:
+            # Get user goal from User Service with a timeout of 5 seconds
+            user_goal_response = self.user_stub.GetUserGoal(user_pb2.GoalRequest(user_id=request.user_id), timeout=5.0)
+            user_goal = user_goal_response.goal_type
+        except grpc.RpcError as e:
+            if e.code() == grpc.StatusCode.DEADLINE_EXCEEDED:
+                context.set_code(grpc.StatusCode.DEADLINE_EXCEEDED)
+                context.set_details('User Service request timeout exceeded')
+                return pb2.WorkoutResponse()
 
         # Insert session into MongoDB
         session_id = workout_collection.insert_one({
             'user_id': request.user_id,
-            'workout_type': 'Running',  # For simplicity
+            'workout_type': user_goal,  # Use the goal-based workout type
             'start_time': time.time()
         }).inserted_id
 
