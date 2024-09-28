@@ -6,7 +6,6 @@ import threading
 import user_service_pb2_grpc as pb2_grpc
 import user_service_pb2 as pb2
 
-# Simulated in-memory storage for users and goals
 users_db = {}
 goals_db = {
     'lose weight': ['Running', 'Calisthenics'],
@@ -25,7 +24,7 @@ def before_request():
 @app.after_request
 def after_request(response):
     total_time = time.time() - g.start_time
-    if total_time > 5:  # Simulate timeout
+    if total_time > 5: 
         response.status_code = 504
         response.data = "Request Timeout"
     return response
@@ -36,7 +35,7 @@ def status():
 
 class UserService(pb2_grpc.UserServiceServicer):
     def RegisterUser(self, request, context):
-        user_id = str(len(users_db) + 1)  # Generate a new user ID
+        user_id = str(len(users_db) + 1) 
         users_db[user_id] = {
             'username': request.username,
             'email': request.email,

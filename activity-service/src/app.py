@@ -24,7 +24,7 @@ def before_request():
 @app.after_request
 def after_request(response):
     total_time = time.time() - g.start_time
-    if total_time > 5:  # Simulate timeout
+    if total_time > 5:  
         response.status_code = 504
         response.data = "Request Timeout"
     return response
