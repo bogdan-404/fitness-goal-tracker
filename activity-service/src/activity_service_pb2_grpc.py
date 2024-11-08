@@ -39,6 +39,11 @@ class ActivityServiceStub(object):
                 request_serializer=activity__service__pb2.WorkoutRequest.SerializeToString,
                 response_deserializer=activity__service__pb2.WorkoutResponse.FromString,
                 _registered_method=True)
+        self.StartGroupWorkoutSession = channel.unary_unary(
+                '/activity_service.ActivityService/StartGroupWorkoutSession',
+                request_serializer=activity__service__pb2.WorkoutRequest.SerializeToString,
+                response_deserializer=activity__service__pb2.WorkoutResponse.FromString,
+                _registered_method=True)
         self.EndWorkoutSession = channel.unary_unary(
                 '/activity_service.ActivityService/EndWorkoutSession',
                 request_serializer=activity__service__pb2.SessionRequest.SerializeToString,
@@ -60,6 +65,12 @@ class ActivityServiceServicer(object):
     """Missing associated documentation comment in .proto file."""
 
     def StartWorkoutSession(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def StartGroupWorkoutSession(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -88,6 +99,11 @@ def add_ActivityServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
             'StartWorkoutSession': grpc.unary_unary_rpc_method_handler(
                     servicer.StartWorkoutSession,
+                    request_deserializer=activity__service__pb2.WorkoutRequest.FromString,
+                    response_serializer=activity__service__pb2.WorkoutResponse.SerializeToString,
+            ),
+            'StartGroupWorkoutSession': grpc.unary_unary_rpc_method_handler(
+                    servicer.StartGroupWorkoutSession,
                     request_deserializer=activity__service__pb2.WorkoutRequest.FromString,
                     response_serializer=activity__service__pb2.WorkoutResponse.SerializeToString,
             ),
@@ -132,6 +148,33 @@ class ActivityService(object):
             request,
             target,
             '/activity_service.ActivityService/StartWorkoutSession',
+            activity__service__pb2.WorkoutRequest.SerializeToString,
+            activity__service__pb2.WorkoutResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def StartGroupWorkoutSession(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/activity_service.ActivityService/StartGroupWorkoutSession',
             activity__service__pb2.WorkoutRequest.SerializeToString,
             activity__service__pb2.WorkoutResponse.FromString,
             options,

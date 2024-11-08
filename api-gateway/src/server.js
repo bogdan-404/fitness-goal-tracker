@@ -1,11 +1,19 @@
-const grpc = require('@grpc/grpc-js');
-const protoLoader = require('@grpc/proto-loader');
 const express = require('express');
 const http = require('http');
-const socketIo = require('socket.io');
+const WebSocket = require('ws');
+const grpc = require('@grpc/grpc-js');
+const protoLoader = require('@grpc/proto-loader');
 const path = require('path');
+const { createClient } = require('redis');
+const CircuitBreaker = require('opossum');
 
-// Path to your proto files
+// Redis client
+const redisClient = createClient(); 
+
+// Connect to Redis
+redisClient.connect().catch(console.error); 
+
+// Paths to your proto files
 const activityProtoPath = path.join(__dirname, '../proto/activity_service.proto');
 const userProtoPath = path.join(__dirname, '../proto/user_service.proto');
 
@@ -33,28 +41,42 @@ const userProto = grpc.loadPackageDefinition(userPackageDefinition).user_service
 const activityClient = new activityProto.ActivityService('localhost:50052', grpc.credentials.createInsecure());
 const userClient = new userProto.UserService('localhost:50051', grpc.credentials.createInsecure());
 
-// Create an Express app for handling HTTP requests
+// Express app
 const app = express();
 app.use(express.json());
 
-// WebSocket Setup
-const server = http.createServer(app);
-const io = socketIo(server, {
-    cors: {
-        origin: '*', // Allow connections from any origin
-        methods: ['GET', 'POST'],
-        transports: ['websocket', 'polling'],
-        credentials: true
-    },
-    allowEIO3: true  // Use Engine.IO v3 for compatibility
-});
 
-// Simple status endpoint for API Gateway
 app.get('/status', (req, res) => {
     res.json({ status: 'API Gateway Running' });
 });
 
-// Forward register user request to the User Service via gRPC
+function startWorkoutSessionGrpcCall(request) {
+    return new Promise((resolve, reject) => {
+        activityClient.StartWorkoutSession(request, (err, response) => {
+            if (err) {
+                return reject(err);
+            }
+            resolve(response);
+        });
+    });
+}
+
+// Circuit breaker options
+const options = {
+    timeout: 5000, // 5 seconds
+    errorThresholdPercentage: 50, // When 50% of requests fail
+    resetTimeout: 17500 // 17.5 seconds
+};
+
+// Create the circuit breaker
+const breaker = new CircuitBreaker(startWorkoutSessionGrpcCall, options);
+
+// Handle circuit breaker events
+breaker.on('open', () => console.log('Circuit breaker opened'));
+breaker.on('halfOpen', () => console.log('Circuit breaker half-open'));
+breaker.on('close', () => console.log('Circuit breaker closed'));
+
+// Register User
 app.post('/users/register', (req, res) => {
     const { username, email, password, goal } = req.body;
     userClient.RegisterUser({ username, email, password, goal }, (err, response) => {
@@ -65,7 +87,7 @@ app.post('/users/register', (req, res) => {
     });
 });
 
-// Forward get user goal request to the User Service via gRPC
+// Get User Goal
 app.get('/users/:id/goal', (req, res) => {
     const user_id = req.params.id;
     userClient.GetUserGoal({ user_id }, (err, response) => {
@@ -76,10 +98,24 @@ app.get('/users/:id/goal', (req, res) => {
     });
 });
 
-// Forward start workout session request to the Activity Service via gRPC
+// Start Workout Session with Circuit Breaker
 app.post('/workouts/start', (req, res) => {
     const { user_id } = req.body;
-    activityClient.StartWorkoutSession({ user_id }, (err, response) => {
+    breaker.fire({ user_id })
+        .then(response => res.json(response))
+        .catch(err => {
+            if (breaker.opened) {
+                res.status(503).json({ error: 'Service unavailable due to circuit breaker' });
+            } else {
+                res.status(500).json({ error: err.message });
+            }
+        });
+});
+
+// Start Group Workout Session
+app.post('/workouts/group/start', (req, res) => {
+    const { user_id } = req.body;
+    activityClient.StartGroupWorkoutSession({ user_id }, (err, response) => {
         if (err) {
             return res.status(500).json({ error: err.message });
         }
@@ -87,7 +123,7 @@ app.post('/workouts/start', (req, res) => {
     });
 });
 
-// Forward end workout session request to the Activity Service via gRPC
+// End Workout Session
 app.post('/workouts/end', (req, res) => {
     const { session_id } = req.body;
     activityClient.EndWorkoutSession({ session_id }, (err, response) => {
@@ -98,45 +134,90 @@ app.post('/workouts/end', (req, res) => {
     });
 });
 
-// WebSocket connection for group sessions
-let workoutSessions = {};
-
-io.on('connection', (socket) => {
-    console.log(`User connected: ${socket.id}`);
-
-    // User joins a workout session
-    socket.on('join_session', (data) => {
-        const { session_id, user_id } = data;
-        socket.join(session_id);
-        console.log(`User ${user_id} joined session ${session_id}`);
-        if (!workoutSessions[session_id]) {
-            workoutSessions[session_id] = { votes: {}, participants: [] };
-        }
-        workoutSessions[session_id].participants.push(user_id);
-        io.to(session_id).emit('user_joined', { user_id });
-    });
-
-    // Handle voting for next exercise
-    socket.on('vote_exercise', (data) => {
-        const { session_id, user_id, exercise, duration } = data;
-        if (!workoutSessions[session_id].votes[user_id]) {
-            workoutSessions[session_id].votes[user_id] = { exercise, duration };
-        }
-        io.to(session_id).emit('vote_update', workoutSessions[session_id].votes);
-    });
-
-    // Notify all users of the chosen exercise
-    socket.on('exercise_chosen', (data) => {
-        const { session_id, exercise, duration } = data;
-        io.to(session_id).emit('exercise_start', { exercise, duration });
-    });
-
-    socket.on('disconnect', () => {
-        console.log(`User disconnected: ${socket.id}`);
-    });
+// Start the HTTP server
+const HTTP_PORT = 8080;
+app.listen(HTTP_PORT, () => {
+    console.log(`API Gateway HTTP server running on port ${HTTP_PORT}`);
 });
 
-// Start the API Gateway (HTTP and WebSocket)
-server.listen(8080, () => {
-    console.log('API Gateway running on port 8080');
+// Start the WebSocket server on a different port
+const WS_PORT = 8081;
+const wsServer = new WebSocket.Server({ port: WS_PORT }, () => {
+    console.log(`WebSocket server running on port ${WS_PORT}`);
+});
+
+// WebSocket connection for group sessions
+wsServer.on('connection', (ws) => {
+    console.log('User connected via WebSocket');
+
+    // Store user session data
+    let session_id = null;
+    let user_id = null;
+
+    ws.on('message', async (message) => {
+        try {
+            const data = JSON.parse(message);
+
+            if (data.type === 'join_session') {
+                session_id = data.session_id;
+                user_id = data.user_id;
+
+                // Store the connection in the session room
+                ws.session_id = session_id;
+                ws.user_id = user_id;
+
+                console.log(`User ${user_id} joined session ${session_id}`);
+
+                // Initialize session in Redis if not exists
+                try {
+                    // Use the new hGetAll method, which returns a Promise
+                    const sessionData = await redisClient.hGetAll(`session:${session_id}`);
+
+                    if (Object.keys(sessionData).length === 0) {
+                        // Initialize session data
+                        const sessionInfo = {
+                            participants: JSON.stringify([user_id])
+                        };
+                        await redisClient.hSet(`session:${session_id}`, sessionInfo);
+                    } else {
+                        // Add user to participants
+                        let participants = JSON.parse(sessionData.participants);
+                        if (!participants.includes(user_id)) {
+                            participants.push(user_id);
+                            await redisClient.hSet(`session:${session_id}`, 'participants', JSON.stringify(participants));
+                        }
+                    }
+                } catch (err) {
+                    console.error('Redis error:', err);
+                }
+
+                // Notify others in the session
+                wsServer.clients.forEach((client) => {
+                    if (client !== ws && client.readyState === WebSocket.OPEN && client.session_id === session_id) {
+                        client.send(JSON.stringify({
+                            type: 'user_joined',
+                            user_id: user_id
+                        }));
+                    }
+                });
+            } else if (data.type === 'chat_message') {
+                // Broadcast the message to all participants in the session
+                wsServer.clients.forEach((client) => {
+                    if (client.readyState === WebSocket.OPEN && client.session_id === session_id) {
+                        client.send(JSON.stringify({
+                            type: 'chat_message',
+                            user_id: user_id,
+                            message: data.message
+                        }));
+                    }
+                });
+            }
+        } catch (err) {
+            console.error('Error processing message:', err);
+        }
+    });
+
+    ws.on('close', () => {
+        console.log(`User ${user_id} disconnected`);
+    });
 });

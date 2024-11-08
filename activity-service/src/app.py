@@ -8,11 +8,20 @@ import activity_service_pb2 as pb2
 import user_service_pb2_grpc as user_pb2_grpc
 import user_service_pb2 as user_pb2
 from pymongo import MongoClient
+import redis
+from pybreaker import CircuitBreaker, CircuitBreakerError
+from bson.objectid import ObjectId
 
 # MongoDB setup
 client = MongoClient('mongodb://localhost:27017/')
 db = client['activity_db']
 workout_collection = db['workouts']
+
+# Redis client
+redis_client = redis.StrictRedis(host='localhost', port=6379, db=0)
+
+# Circuit Breaker setup
+circuit_breaker = CircuitBreaker(fail_max=3, reset_timeout=17.5)  # 5 * 3.5 = 17.5 seconds
 
 # Flask app for status check and timeouts
 app = Flask(__name__)
@@ -39,32 +48,70 @@ class ActivityService(pb2_grpc.ActivityServiceServicer):
         self.user_channel = grpc.insecure_channel('localhost:50051')
         self.user_stub = user_pb2_grpc.UserServiceStub(self.user_channel)
     
+    @circuit_breaker
     def StartWorkoutSession(self, request, context):
-        try:
-            # Get user goal from User Service with a timeout of 5 seconds
-            user_goal_response = self.user_stub.GetUserGoal(user_pb2.GoalRequest(user_id=request.user_id), timeout=5.0)
-            user_goal = user_goal_response.goal_type
-        except grpc.RpcError as e:
-            if e.code() == grpc.StatusCode.DEADLINE_EXCEEDED:
-                context.set_code(grpc.StatusCode.DEADLINE_EXCEEDED)
-                context.set_details('User Service request timeout exceeded')
-                return pb2.WorkoutResponse()
+        user_id = request.user_id
 
-        # Insert session into MongoDB
-        session_id = workout_collection.insert_one({
-            'user_id': request.user_id,
-            'workout_type': user_goal,  # Use the goal-based workout type
-            'start_time': time.time()
-        }).inserted_id
+        # Check Redis cache first
+        cached_goal = redis_client.get(f"user_goal:{user_id}")
+        if cached_goal:
+            print("Cache hit for user goal in Activity Service")
+            user_goal = cached_goal.decode('utf-8')
+        else:
+            print("Cache miss in Activity Service. Making gRPC call to User Service.")
+            try:
+                # Get user goal from User Service
+                user_goal_response = self.user_stub.GetUserGoal(
+                    user_pb2.GoalRequest(user_id=user_id), timeout=5.0
+                )
+                user_goal = user_goal_response.goal_type
 
-        return pb2.WorkoutResponse(session_id=str(session_id), start_time="now")
+                # Cache the goal in Redis
+                redis_client.set(f"user_goal:{user_id}", user_goal)
+            except grpc.RpcError as e:
+                # Handle exceptions
+                raise e  # This will be caught by the circuit breaker
 
+        # Proceed with starting the workout session
+        session_id = str(workout_collection.insert_one({
+            'user_id': user_id,
+            'workout_type': user_goal,
+            'start_time': time.time(),
+            'active': True
+        }).inserted_id)
+
+        return pb2.WorkoutResponse(session_id=session_id, start_time="now")
+
+    @circuit_breaker
+    def StartGroupWorkoutSession(self, request, context):
+        user_id = request.user_id
+
+        # Proceed with starting the group workout session
+        session_id = str(workout_collection.insert_one({
+            'user_id': user_id,
+            'workout_type': 'group',
+            'start_time': time.time(),
+            'participants': [user_id],
+            'active': True
+        }).inserted_id)
+
+        return pb2.WorkoutResponse(session_id=session_id, start_time="now")
+
+    @circuit_breaker
     def EndWorkoutSession(self, request, context):
-        workout_collection.update_one(
-            {'_id': request.session_id}, 
-            {'$set': {'active': False}}
-        )
-        return pb2.WorkoutResponse(session_id=request.session_id, start_time="ended")
+        session_id = request.session_id
+        try:
+            workout_collection.update_one(
+                {'_id': ObjectId(session_id)}, 
+                {'$set': {'active': False}}
+            )
+            return pb2.WorkoutResponse(session_id=session_id, start_time="ended")
+        except Exception as e:
+            context.set_code(grpc.StatusCode.INTERNAL)
+            context.set_details(str(e))
+            return pb2.WorkoutResponse()
+
+    # Implement other methods as needed...
 
 def grpc_server():
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))

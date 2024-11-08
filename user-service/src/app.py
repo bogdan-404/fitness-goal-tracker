@@ -1,10 +1,14 @@
 import grpc
 from concurrent import futures
 import time
-from flask import Flask, jsonify, request, g
+from flask import Flask, jsonify, g
 import threading
 import user_service_pb2_grpc as pb2_grpc
 import user_service_pb2 as pb2
+import redis
+
+# Initialize Redis client
+redis_client = redis.StrictRedis(host='localhost', port=6379, db=0)
 
 users_db = {}
 goals_db = {
@@ -24,7 +28,7 @@ def before_request():
 @app.after_request
 def after_request(response):
     total_time = time.time() - g.start_time
-    if total_time > 5: 
+    if total_time > 5:
         response.status_code = 504
         response.data = "Request Timeout"
     return response
@@ -35,7 +39,7 @@ def status():
 
 class UserService(pb2_grpc.UserServiceServicer):
     def RegisterUser(self, request, context):
-        user_id = str(len(users_db) + 1) 
+        user_id = str(len(users_db) + 1)
         users_db[user_id] = {
             'username': request.username,
             'email': request.email,
@@ -46,12 +50,25 @@ class UserService(pb2_grpc.UserServiceServicer):
 
     def GetUserGoal(self, request, context):
         user_id = request.user_id
+
+        # Check Redis cache first
+        cached_goal = redis_client.get(f"user_goal:{user_id}")
+        if cached_goal:
+            print("Cache hit for user goal")
+            return pb2.GoalResponse(goal_type=cached_goal.decode('utf-8'))
+
+        # If not in cache, retrieve from database
         if user_id not in users_db:
             context.set_details('User not found')
             context.set_code(grpc.StatusCode.NOT_FOUND)
             return pb2.GoalResponse()
-        
+
         goal = users_db[user_id]['goal']
+
+        # Cache the goal in Redis
+        redis_client.set(f"user_goal:{user_id}", goal)
+        print("Cache miss. Retrieved goal from DB and cached.")
+
         return pb2.GoalResponse(goal_type=goal)
 
 def grpc_server():

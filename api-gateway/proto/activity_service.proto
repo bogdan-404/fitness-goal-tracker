@@ -4,6 +4,7 @@ package activity_service;
 
 service ActivityService {
   rpc StartWorkoutSession (WorkoutRequest) returns (WorkoutResponse);
+  rpc StartGroupWorkoutSession (WorkoutRequest) returns (WorkoutResponse);
   rpc EndWorkoutSession (SessionRequest) returns (WorkoutResponse);
   rpc VoteWorkout (VoteRequest) returns (VoteResponse);
   rpc CountVotes (SessionRequest) returns (CountVotesResponse);
