@@ -122,10 +122,10 @@ Key features to develop:
     - The coordinator oversees and sequences operations across different services, ensuring that each part of a transaction completes successfully or is rolled back if an error occurs.
     - If an operation fails, the coordinator triggers "compensating actions" (undo actions) for previously completed steps, maintaining consistency across services.
 
-    **A possible example **:
-    1. **User Sets a Goal**: The User Service updates the user profile with the new fitness goal.
-    2. **Activity Tracking**: The Activity Service is notified of this new goal to adjust activity suggestions.
-    3. **Error Handling**: If either of these steps fails, the coordinator ensures previous steps are undone or adjusted as needed.
+    **A possible example**:
+    -  **User Sets a Goal**: The User Service updates the user profile with the new fitness goal.
+    -  **Activity Tracking**: The Activity Service is notified of this new goal to adjust activity suggestions.
+    - **Error Handling**: If either of these steps fails, the coordinator ensures previous steps are undone or adjusted as needed.
 
 9. **Containerization**
 

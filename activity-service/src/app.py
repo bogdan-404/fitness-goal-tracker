@@ -32,33 +32,26 @@ user_stub = user_service_pb2_grpc.UserServiceStub(user_channel)
 # gRPC service implementation
 class ActivityService(activity_service_pb2_grpc.ActivityServiceServicer):
     def StartWorkoutSession(self, request, context):
-        # Implement logic to start a workout session
-        # For example, create a new session in MongoDB
-        session_id = "session123"  # Replace with actual logic
-        start_time = "2023-11-08T12:00:00Z"  # Replace with actual start time
+        session_id = "session123"  
+        start_time = "2023-11-08T12:00:00Z"  
         return activity_service_pb2.WorkoutResponse(
             session_id=session_id,
             start_time=start_time
         )
 
     def EndWorkoutSession(self, request, context):
-        # Implement logic to end a workout session
-        # For now, return a response with session_id and start_time
         return activity_service_pb2.WorkoutResponse(
             session_id=request.session_id,
             start_time=""
         )
 
     def StartGroupWorkoutSession(self, request, context):
-        # Implement logic to start a group workout session
-        session_id = "group_session123"  # Replace with actual logic
-        start_time = "2023-11-08T12:00:00Z"  # Replace with actual start time
+        session_id = "group_session123"  
+        start_time = "2023-11-08T12:00:00Z"  
         return activity_service_pb2.WorkoutResponse(
             session_id=session_id,
             start_time=start_time
         )
-
-    # Implement other methods as needed
 
 # Start gRPC server
 def serve_grpc():
@@ -70,7 +63,6 @@ def serve_grpc():
     print('Starting Activity Service on port 50052...')
     server.wait_for_termination()
 
-# Start Flask app (for health checks)
 app = Flask(__name__)
 
 @app.route('/status')
@@ -79,7 +71,5 @@ def status():
 
 if __name__ == '__main__':
     from threading import Thread
-    # Start Flask app in a separate thread
     Thread(target=lambda: app.run(host='0.0.0.0', port=5001)).start()
-    # Start gRPC server
     serve_grpc()

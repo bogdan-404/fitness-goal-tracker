@@ -91,7 +91,5 @@ def status():
 
 if __name__ == '__main__':
     from threading import Thread
-    # Start Flask app in a separate thread
     Thread(target=lambda: app.run(host='0.0.0.0', port=5000)).start()
-    # Start gRPC server
     serve_grpc()
