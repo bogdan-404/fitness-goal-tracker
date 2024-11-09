@@ -1,4 +1,6 @@
-Flask
 grpcio
 grpcio-tools
+grpcio-health-checking
+flask
+redis
 pymongo

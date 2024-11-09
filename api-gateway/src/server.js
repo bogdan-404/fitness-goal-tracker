@@ -7,11 +7,20 @@ const path = require('path');
 const { createClient } = require('redis');
 const CircuitBreaker = require('opossum');
 
+// Read environment variables for hostnames
+const redisHost = process.env.REDIS_HOST || 'localhost';
+const userServiceHost = process.env.USER_SERVICE_HOST || 'localhost';
+const activityServiceHost = process.env.ACTIVITY_SERVICE_HOST || 'localhost';
+
 // Redis client
-const redisClient = createClient(); 
+const redisClient = createClient({
+    url: `redis://${redisHost}:6379`,
+});
+
+redisClient.on('error', (err) => console.error('Redis Client Error', err));
 
 // Connect to Redis
-redisClient.connect().catch(console.error); 
+redisClient.connect().catch(console.error);
 
 // Paths to your proto files
 const activityProtoPath = path.join(__dirname, '../proto/activity_service.proto');
@@ -23,14 +32,14 @@ const activityPackageDefinition = protoLoader.loadSync(activityProtoPath, {
     longs: String,
     enums: String,
     defaults: true,
-    oneofs: true
+    oneofs: true,
 });
 const userPackageDefinition = protoLoader.loadSync(userProtoPath, {
     keepCase: true,
     longs: String,
     enums: String,
     defaults: true,
-    oneofs: true
+    oneofs: true,
 });
 
 // Load gRPC service definitions
@@ -38,18 +47,25 @@ const activityProto = grpc.loadPackageDefinition(activityPackageDefinition).acti
 const userProto = grpc.loadPackageDefinition(userPackageDefinition).user_service;
 
 // Create gRPC clients
-const activityClient = new activityProto.ActivityService('localhost:50052', grpc.credentials.createInsecure());
-const userClient = new userProto.UserService('localhost:50051', grpc.credentials.createInsecure());
+const activityClient = new activityProto.ActivityService(
+    `${activityServiceHost}:50052`,
+    grpc.credentials.createInsecure()
+);
+const userClient = new userProto.UserService(
+    `${userServiceHost}:50051`,
+    grpc.credentials.createInsecure()
+);
 
 // Express app
 const app = express();
 app.use(express.json());
 
-
+// Simple status endpoint for API Gateway
 app.get('/status', (req, res) => {
     res.json({ status: 'API Gateway Running' });
 });
 
+// Function to wrap gRPC call for Circuit Breaker
 function startWorkoutSessionGrpcCall(request) {
     return new Promise((resolve, reject) => {
         activityClient.StartWorkoutSession(request, (err, response) => {
@@ -65,7 +81,7 @@ function startWorkoutSessionGrpcCall(request) {
 const options = {
     timeout: 5000, // 5 seconds
     errorThresholdPercentage: 50, // When 50% of requests fail
-    resetTimeout: 17500 // 17.5 seconds
+    resetTimeout: 17500, // 17.5 seconds
 };
 
 // Create the circuit breaker
@@ -101,9 +117,10 @@ app.get('/users/:id/goal', (req, res) => {
 // Start Workout Session with Circuit Breaker
 app.post('/workouts/start', (req, res) => {
     const { user_id } = req.body;
-    breaker.fire({ user_id })
-        .then(response => res.json(response))
-        .catch(err => {
+    breaker
+        .fire({ user_id })
+        .then((response) => res.json(response))
+        .catch((err) => {
             if (breaker.opened) {
                 res.status(503).json({ error: 'Service unavailable due to circuit breaker' });
             } else {
@@ -176,7 +193,7 @@ wsServer.on('connection', (ws) => {
                     if (Object.keys(sessionData).length === 0) {
                         // Initialize session data
                         const sessionInfo = {
-                            participants: JSON.stringify([user_id])
+                            participants: JSON.stringify([user_id]),
                         };
                         await redisClient.hSet(`session:${session_id}`, sessionInfo);
                     } else {
@@ -194,21 +211,25 @@ wsServer.on('connection', (ws) => {
                 // Notify others in the session
                 wsServer.clients.forEach((client) => {
                     if (client !== ws && client.readyState === WebSocket.OPEN && client.session_id === session_id) {
-                        client.send(JSON.stringify({
-                            type: 'user_joined',
-                            user_id: user_id
-                        }));
+                        client.send(
+                            JSON.stringify({
+                                type: 'user_joined',
+                                user_id: user_id,
+                            })
+                        );
                     }
                 });
             } else if (data.type === 'chat_message') {
                 // Broadcast the message to all participants in the session
                 wsServer.clients.forEach((client) => {
                     if (client.readyState === WebSocket.OPEN && client.session_id === session_id) {
-                        client.send(JSON.stringify({
-                            type: 'chat_message',
-                            user_id: user_id,
-                            message: data.message
-                        }));
+                        client.send(
+                            JSON.stringify({
+                                type: 'chat_message',
+                                user_id: user_id,
+                                message: data.message,
+                            })
+                        );
                     }
                 });
             }

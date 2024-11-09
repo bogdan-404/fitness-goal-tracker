@@ -1,97 +1,97 @@
+import os
 import grpc
 from concurrent import futures
-import time
-from flask import Flask, jsonify, g
-import threading
-import user_service_pb2_grpc as pb2_grpc
-import user_service_pb2 as pb2
+from flask import Flask, jsonify, request
+import sqlite3
 import redis
+from grpc_health.v1 import health, health_pb2_grpc
+
+# Import the generated classes
+import user_service_pb2
+import user_service_pb2_grpc
+
+# Read environment variables
+REDIS_HOST = os.environ.get('REDIS_HOST', 'localhost')
 
 # Initialize Redis client
-redis_client = redis.StrictRedis(host='localhost', port=6379, db=0)
+redis_client = redis.Redis(host=REDIS_HOST, port=6379, db=0)
 
-users_db = {}
-goals_db = {
-    'lose weight': ['Running', 'Calisthenics'],
-    'muscle gain': ['Weightlifting', 'Strength Training'],
-    'after trauma sport': ['Physical Therapy', 'Yoga'],
-    'maintain physical form': ['Jogging', 'Stretching']
-}
+# SQLite setup
+DATABASE = 'users.db'
 
-# Flask app for status check and timeouts
-app = Flask(__name__)
+def init_db():
+    conn = sqlite3.connect(DATABASE)
+    cursor = conn.cursor()
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+            user_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT NOT NULL UNIQUE,
+            email TEXT NOT NULL UNIQUE,
+            password TEXT NOT NULL,
+            goal TEXT
+        )
+    ''')
+    conn.commit()
+    conn.close()
 
-@app.before_request
-def before_request():
-    g.start_time = time.time()
+init_db()
 
-@app.after_request
-def after_request(response):
-    total_time = time.time() - g.start_time
-    if total_time > 5:
-        response.status_code = 504
-        response.data = "Request Timeout"
-    return response
-
-@app.route('/status', methods=['GET'])
-def status():
-    return jsonify({"status": "User Service Running"})
-
-class UserService(pb2_grpc.UserServiceServicer):
+# gRPC service implementation
+class UserService(user_service_pb2_grpc.UserServiceServicer):
     def RegisterUser(self, request, context):
-        user_id = str(len(users_db) + 1)
-        users_db[user_id] = {
-            'username': request.username,
-            'email': request.email,
-            'password': request.password,
-            'goal': request.goal
-        }
-        return pb2.UserResponse(user_id=user_id, username=request.username, email=request.email)
+        try:
+            conn = sqlite3.connect(DATABASE)
+            cursor = conn.cursor()
+            cursor.execute('''
+                INSERT INTO users (username, email, password, goal)
+                VALUES (?, ?, ?, ?)
+            ''', (request.username, request.email, request.password, request.goal))
+            conn.commit()
+            user_id = cursor.lastrowid
+            conn.close()
+            return user_service_pb2.UserResponse(
+                user_id=str(user_id),
+                username=request.username,
+                email=request.email
+            )
+        except sqlite3.IntegrityError as e:
+            context.set_details(str(e))
+            context.set_code(grpc.StatusCode.ALREADY_EXISTS)
+            return user_service_pb2.UserResponse()
 
     def GetUserGoal(self, request, context):
-        user_id = request.user_id
-
-        # Check Redis cache first
-        cached_goal = redis_client.get(f"user_goal:{user_id}")
-        if cached_goal:
-            print("Cache hit for user goal")
-            return pb2.GoalResponse(goal_type=cached_goal.decode('utf-8'))
-
-        # If not in cache, retrieve from database
-        if user_id not in users_db:
+        conn = sqlite3.connect(DATABASE)
+        cursor = conn.cursor()
+        cursor.execute('SELECT goal FROM users WHERE user_id = ?', (request.user_id,))
+        row = cursor.fetchone()
+        conn.close()
+        if row:
+            return user_service_pb2.GoalResponse(goal_type=row[0])
+        else:
             context.set_details('User not found')
             context.set_code(grpc.StatusCode.NOT_FOUND)
-            return pb2.GoalResponse()
+            return user_service_pb2.GoalResponse()
 
-        goal = users_db[user_id]['goal']
-
-        # Cache the goal in Redis
-        redis_client.set(f"user_goal:{user_id}", goal)
-        print("Cache miss. Retrieved goal from DB and cached.")
-
-        return pb2.GoalResponse(goal_type=goal)
-
-def grpc_server():
+# Start gRPC server
+def serve_grpc():
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
-    pb2_grpc.add_UserServiceServicer_to_server(UserService(), server)
-    print("Starting User Service on port 50051...")
+    user_service_pb2_grpc.add_UserServiceServicer_to_server(UserService(), server)
+    health_pb2_grpc.add_HealthServicer_to_server(health.HealthServicer(), server)
     server.add_insecure_port('[::]:50051')
     server.start()
-    try:
-        while True:
-            time.sleep(86400)
-    except KeyboardInterrupt:
-        server.stop(0)
+    print('Starting User Service on port 50051...')
+    server.wait_for_termination()
 
-def flask_server():
-    app.run(host='0.0.0.0', port=5000)
+# Start Flask app (for health checks)
+app = Flask(__name__)
+
+@app.route('/status')
+def status():
+    return jsonify({'status': 'User Service Running'})
 
 if __name__ == '__main__':
-    grpc_thread = threading.Thread(target=grpc_server)
-    flask_thread = threading.Thread(target=flask_server)
-
-    grpc_thread.start()
-    flask_thread.start()
-
-    grpc_thread.join()
-    flask_thread.join()
+    from threading import Thread
+    # Start Flask app in a separate thread
+    Thread(target=lambda: app.run(host='0.0.0.0', port=5000)).start()
+    # Start gRPC server
+    serve_grpc()

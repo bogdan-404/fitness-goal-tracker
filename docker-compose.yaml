@@ -1,0 +1,64 @@
+version: '3.8'
+
+services:
+  mongo:
+    image: mongo:4.4
+    container_name: mongo
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+
+  redis:
+    image: redis:6.2
+    container_name: redis
+    ports:
+      - "6379:6379"
+
+  user-service:
+    build:
+      context: ./user-service
+    container_name: user-service
+    ports:
+      - "5000:5000"
+      - "50051:50051"
+    depends_on:
+      - redis
+      - mongo
+    environment:
+      - REDIS_HOST=redis
+
+  activity-service:
+    build:
+      context: ./activity-service
+    container_name: activity-service
+    ports:
+      - "5001:5001"
+      - "50052:50052"
+    depends_on:
+      - mongo
+      - redis
+      - user-service
+    environment:
+      - MONGO_HOST=mongo
+      - REDIS_HOST=redis
+      - USER_SERVICE_HOST=user-service
+
+  api-gateway:
+    build:
+      context: ./api-gateway
+    container_name: api-gateway
+    ports:
+      - "8080:8080"
+      - "8081:8081"
+    depends_on:
+      - user-service
+      - activity-service
+      - redis
+    environment:
+      - REDIS_HOST=redis
+      - USER_SERVICE_HOST=user-service
+      - ACTIVITY_SERVICE_HOST=activity-service
+
+volumes:
+  mongo_data:
