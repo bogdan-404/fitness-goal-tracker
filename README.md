@@ -12,7 +12,6 @@ Zlatovcen Bogdan, FAF 212
 6. [Deployment](#deployment)
 7. [How to Run](#how-to-run)
 
-
 ## Application Suitability
 
 The Fitness Goal Tracker is well-suited for a microservices architecture due to the following reasons:
@@ -41,11 +40,11 @@ We intend to use two microservices and an API Gateway:
 
 To ensure **Service High Availability**, each service will have multiple instances running, and the API Gateway will distribute the requests among them. This setup enhances fault tolerance and allows for scaling.
 
-We will also implement a **Circuit Breaker** in the API Gateway that trips if multiple reroutes happen or if a service consistently fails to respond. 
+We will also implement a **Circuit Breaker** in the API Gateway that trips if multiple reroutes happen or if a service consistently fails to respond.
 
 ## System Architecture Diagram
 
-![System Architecture Diagram](scheme2.png)
+![System Architecture Diagram](scheme3.png)
 
 Key features to develop:
 
@@ -99,9 +98,8 @@ Key features to develop:
    - **ELK Stack**: Elasticsearch, Logstash, and Kibana are used for centralized logging, monitoring, and visualization.
 
      - **Elasticsearch**: Stores logs and provides search capabilities.
-     - **Logstash**: Collects, processes, and forwards logs to Elasticsearch. We will use a simple input-filter-output. 
+     - **Logstash**: Collects, processes, and forwards logs to Elasticsearch. We will use a simple input-filter-output.
      - **Kibana**: Visualizes the logs and metrics from Elasticsearch.
-
 
 7. **Data Warehouse and ETL**
 
@@ -110,22 +108,23 @@ Key features to develop:
 
      We might use a scheduled job or a separate service to perform ETL operations. For example, a Python script that runs daily to extract data from MongoDB and SQLite3, transform it, and load it into a PostgreSQL data warehouse.
 
-    - Example ETL Process:
-      - Extract: Pull user and activity data from MongoDB and SQLite3.
-      - Transform: Clean and aggregate data, such as calculating total calories burned per user.
-      - Load: Insert the transformed data into the data warehouse
+   - Example ETL Process:
+     - Extract: Pull user and activity data from MongoDB and SQLite3.
+     - Transform: Clean and aggregate data, such as calculating total calories burned per user.
+     - Load: Insert the transformed data into the data warehouse
 
 8. Long-Running Saga Transactions with Coordinator
 
-    In a microservices setup, handling transactions across multiple services can be challenging. Instead of using a traditional 2-Phase Commit, which is complex and can block other operations, we use a **Saga pattern** with a **coordinator**.
+   In a microservices setup, handling transactions across multiple services can be challenging. Instead of using a traditional 2-Phase Commit, which is complex and can block other operations, we use a **Saga pattern** with a **coordinator**.
 
-    - The coordinator oversees and sequences operations across different services, ensuring that each part of a transaction completes successfully or is rolled back if an error occurs.
-    - If an operation fails, the coordinator triggers "compensating actions" (undo actions) for previously completed steps, maintaining consistency across services.
+   - The coordinator oversees and sequences operations across different services, ensuring that each part of a transaction completes successfully or is rolled back if an error occurs.
+   - If an operation fails, the coordinator triggers "compensating actions" (undo actions) for previously completed steps, maintaining consistency across services.
 
-    **A possible example**:
-    -  **User Sets a Goal**: The User Service updates the user profile with the new fitness goal.
-    -  **Activity Tracking**: The Activity Service is notified of this new goal to adjust activity suggestions.
-    - **Error Handling**: If either of these steps fails, the coordinator ensures previous steps are undone or adjusted as needed.
+   **A possible example**:
+
+   - **User Sets a Goal**: The User Service updates the user profile with the new fitness goal.
+   - **Activity Tracking**: The Activity Service is notified of this new goal to adjust activity suggestions.
+   - **Error Handling**: If either of these steps fails, the coordinator ensures previous steps are undone or adjusted as needed.
 
 9. **Containerization**
 
@@ -327,7 +326,7 @@ docker-compose up --build
 
 3. Test the Application
 
-Use Postman to check all the requests: HTTP, grpc and websocket connection. 
+Use Postman to check all the requests: HTTP, grpc and websocket connection.
 
 4. Shut down and delete containers
 
