@@ -9,21 +9,18 @@ services:
       - "8081:8081"
     environment:
       - REDIS_HOST=redis
-      - USER_SERVICE_HOST=user-service-1
-      - ACTIVITY_SERVICE_HOST=activity-service-1
+      - USER_SERVICE_HOST=nginx-user
+      - ACTIVITY_SERVICE_HOST=nginx-activity
     depends_on:
       - redis
-      - user-service-1
-      - activity-service-1
+      - nginx-user
+      - nginx-activity
     networks:
       - app-network
-      - elk
 
   # User Service Instances
   user-service-1:
     build: ./user-service
-    ports:
-      - "50051:50051"
     environment:
       - REDIS_HOST=redis
     networks:
@@ -31,8 +28,6 @@ services:
 
   user-service-2:
     build: ./user-service
-    ports:
-      - "50052:50051"
     environment:
       - REDIS_HOST=redis
     networks:
@@ -40,18 +35,28 @@ services:
 
   user-service-3:
     build: ./user-service
-    ports:
-      - "50053:50051"
     environment:
       - REDIS_HOST=redis
+    networks:
+      - app-network
+
+  # Nginx Load Balancer for User Service
+  nginx-user:
+    image: nginx:latest
+    ports:
+      - "50051:50051"
+    volumes:
+      - ./nginx/user_nginx.conf:/etc/nginx/nginx.conf
+    depends_on:
+      - user-service-1
+      - user-service-2
+      - user-service-3
     networks:
       - app-network
 
   # Activity Service Instances
   activity-service-1:
     build: ./activity-service
-    ports:
-      - "50061:50052"
     environment:
       - MONGO_HOST=mongo
       - REDIS_HOST=redis
@@ -62,8 +67,6 @@ services:
 
   activity-service-2:
     build: ./activity-service
-    ports:
-      - "50062:50052"
     environment:
       - MONGO_HOST=mongo
       - REDIS_HOST=redis
@@ -74,13 +77,25 @@ services:
 
   activity-service-3:
     build: ./activity-service
-    ports:
-      - "50063:50052"
     environment:
       - MONGO_HOST=mongo
       - REDIS_HOST=redis
     depends_on:
       - mongo
+    networks:
+      - app-network
+
+  # Nginx Load Balancer for Activity Service
+  nginx-activity:
+    image: nginx:latest
+    ports:
+      - "50052:50052"
+    volumes:
+      - ./nginx/activity_nginx.conf:/etc/nginx/nginx.conf
+    depends_on:
+      - activity-service-1
+      - activity-service-2
+      - activity-service-3
     networks:
       - app-network
 
