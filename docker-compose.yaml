@@ -1,64 +1,138 @@
 version: '3.8'
 
 services:
-  mongo:
-    image: mongo:4.4
-    container_name: mongo
-    ports:
-      - "27017:27017"
-    volumes:
-      - mongo_data:/data/db
-
-  redis:
-    image: redis:6.2
-    container_name: redis
-    ports:
-      - "6379:6379"
-
-  user-service:
-    build:
-      context: ./user-service
-    container_name: user-service
-    ports:
-      - "5000:5000"
-      - "50051:50051"
-    depends_on:
-      - redis
-      - mongo
-    environment:
-      - REDIS_HOST=redis
-
-  activity-service:
-    build:
-      context: ./activity-service
-    container_name: activity-service
-    ports:
-      - "5001:5001"
-      - "50052:50052"
-    depends_on:
-      - mongo
-      - redis
-      - user-service
-    environment:
-      - MONGO_HOST=mongo
-      - REDIS_HOST=redis
-      - USER_SERVICE_HOST=user-service
-
+  # API Gateway
   api-gateway:
-    build:
-      context: ./api-gateway
-    container_name: api-gateway
+    build: ./api-gateway
     ports:
       - "8080:8080"
       - "8081:8081"
-    depends_on:
-      - user-service
-      - activity-service
-      - redis
     environment:
       - REDIS_HOST=redis
-      - USER_SERVICE_HOST=user-service
-      - ACTIVITY_SERVICE_HOST=activity-service
+      - USER_SERVICE_HOST=user-service-1
+      - ACTIVITY_SERVICE_HOST=activity-service-1
+    depends_on:
+      - redis
+      - user-service-1
+      - activity-service-1
+    networks:
+      - app-network
+      - elk
 
-volumes:
-  mongo_data:
+  # User Service Instances
+  user-service-1:
+    build: ./user-service
+    ports:
+      - "50051:50051"
+    environment:
+      - REDIS_HOST=redis
+    networks:
+      - app-network
+
+  user-service-2:
+    build: ./user-service
+    ports:
+      - "50052:50051"
+    environment:
+      - REDIS_HOST=redis
+    networks:
+      - app-network
+
+  user-service-3:
+    build: ./user-service
+    ports:
+      - "50053:50051"
+    environment:
+      - REDIS_HOST=redis
+    networks:
+      - app-network
+
+  # Activity Service Instances
+  activity-service-1:
+    build: ./activity-service
+    ports:
+      - "50061:50052"
+    environment:
+      - MONGO_HOST=mongo
+      - REDIS_HOST=redis
+    depends_on:
+      - mongo
+    networks:
+      - app-network
+
+  activity-service-2:
+    build: ./activity-service
+    ports:
+      - "50062:50052"
+    environment:
+      - MONGO_HOST=mongo
+      - REDIS_HOST=redis
+    depends_on:
+      - mongo
+    networks:
+      - app-network
+
+  activity-service-3:
+    build: ./activity-service
+    ports:
+      - "50063:50052"
+    environment:
+      - MONGO_HOST=mongo
+      - REDIS_HOST=redis
+    depends_on:
+      - mongo
+    networks:
+      - app-network
+
+  # Redis
+  redis:
+    image: redis:6.2
+    ports:
+      - "6379:6379"
+    networks:
+      - app-network
+
+  # MongoDB
+  mongo:
+    image: mongo:4.4
+    ports:
+      - "27017:27017"
+    networks:
+      - app-network
+
+  # ELK Stack
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.17.6
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+    ports:
+      - "9200:9200"
+    networks:
+      - elk
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:7.17.6
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+    ports:
+      - "5601:5601"
+    depends_on:
+      - elasticsearch
+    networks:
+      - elk
+
+  logstash:
+    image: docker.elastic.co/logstash/logstash:7.17.6
+    ports:
+      - "5044:5044"
+    volumes:
+      - ./logstash/pipeline:/usr/share/logstash/pipeline
+    depends_on:
+      - elasticsearch
+    networks:
+      - elk
+
+networks:
+  app-network:
+  elk:

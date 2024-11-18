@@ -1,10 +1,11 @@
 import os
 import grpc
 from concurrent import futures
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify
 from pymongo import MongoClient
 import redis
 from grpc_health.v1 import health, health_pb2_grpc
+import logging
 
 # Import the generated classes
 import activity_service_pb2
@@ -15,7 +16,7 @@ import user_service_pb2_grpc
 # Read environment variables
 MONGO_HOST = os.environ.get('MONGO_HOST', 'localhost')
 REDIS_HOST = os.environ.get('REDIS_HOST', 'localhost')
-USER_SERVICE_HOST = os.environ.get('USER_SERVICE_HOST', 'localhost')
+USER_SERVICE_HOST = os.environ.get('USER_SERVICE_HOST', 'user-service-1')
 
 # MongoDB setup
 mongo_client = MongoClient(f'mongodb://{MONGO_HOST}:27017/')
@@ -29,25 +30,38 @@ redis_client = redis.Redis(host=REDIS_HOST, port=6379, db=0)
 user_channel = grpc.insecure_channel(f'{USER_SERVICE_HOST}:50051')
 user_stub = user_service_pb2_grpc.UserServiceStub(user_channel)
 
+# Create logs directory
+os.makedirs('/app/logs', exist_ok=True)
+
+# Configure logging
+logging.basicConfig(
+    filename='/app/logs/activity-service.log',
+    level=logging.INFO,
+    format='%(asctime)s %(levelname)s %(message)s'
+)
+
 # gRPC service implementation
 class ActivityService(activity_service_pb2_grpc.ActivityServiceServicer):
     def StartWorkoutSession(self, request, context):
-        session_id = "session123"  
-        start_time = "2023-11-08T12:00:00Z"  
+        session_id = "session123"
+        start_time = "2023-11-08T12:00:00Z"
+        logging.info(f"StartWorkoutSession called by user {request.user_id}")
         return activity_service_pb2.WorkoutResponse(
             session_id=session_id,
             start_time=start_time
         )
 
     def EndWorkoutSession(self, request, context):
+        logging.info(f"EndWorkoutSession called for session {request.session_id}")
         return activity_service_pb2.WorkoutResponse(
             session_id=request.session_id,
             start_time=""
         )
 
     def StartGroupWorkoutSession(self, request, context):
-        session_id = "group_session123"  
-        start_time = "2023-11-08T12:00:00Z"  
+        session_id = "group_session123"
+        start_time = "2023-11-08T12:00:00Z"
+        logging.info(f"StartGroupWorkoutSession called by user {request.user_id}")
         return activity_service_pb2.WorkoutResponse(
             session_id=session_id,
             start_time=start_time
@@ -60,7 +74,7 @@ def serve_grpc():
     health_pb2_grpc.add_HealthServicer_to_server(health.HealthServicer(), server)
     server.add_insecure_port('[::]:50052')
     server.start()
-    print('Starting Activity Service on port 50052...')
+    logging.info('Starting Activity Service on port 50052...')
     server.wait_for_termination()
 
 app = Flask(__name__)

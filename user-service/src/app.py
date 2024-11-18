@@ -1,10 +1,11 @@
 import os
 import grpc
 from concurrent import futures
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify
 import sqlite3
 import redis
 from grpc_health.v1 import health, health_pb2_grpc
+import logging
 
 # Import the generated classes
 import user_service_pb2
@@ -36,6 +37,16 @@ def init_db():
 
 init_db()
 
+# Create logs directory
+os.makedirs('/app/logs', exist_ok=True)
+
+# Configure logging
+logging.basicConfig(
+    filename='/app/logs/user-service.log',
+    level=logging.INFO,
+    format='%(asctime)s %(levelname)s %(message)s'
+)
+
 # gRPC service implementation
 class UserService(user_service_pb2_grpc.UserServiceServicer):
     def RegisterUser(self, request, context):
@@ -49,6 +60,7 @@ class UserService(user_service_pb2_grpc.UserServiceServicer):
             conn.commit()
             user_id = cursor.lastrowid
             conn.close()
+            logging.info(f"Registered user {request.username} with ID {user_id}")
             return user_service_pb2.UserResponse(
                 user_id=str(user_id),
                 username=request.username,
@@ -57,6 +69,7 @@ class UserService(user_service_pb2_grpc.UserServiceServicer):
         except sqlite3.IntegrityError as e:
             context.set_details(str(e))
             context.set_code(grpc.StatusCode.ALREADY_EXISTS)
+            logging.error(f"Failed to register user {request.username}: {str(e)}")
             return user_service_pb2.UserResponse()
 
     def GetUserGoal(self, request, context):
@@ -66,10 +79,12 @@ class UserService(user_service_pb2_grpc.UserServiceServicer):
         row = cursor.fetchone()
         conn.close()
         if row:
+            logging.info(f"Retrieved goal for user ID {request.user_id}")
             return user_service_pb2.GoalResponse(goal_type=row[0])
         else:
             context.set_details('User not found')
             context.set_code(grpc.StatusCode.NOT_FOUND)
+            logging.error(f"User ID {request.user_id} not found")
             return user_service_pb2.GoalResponse()
 
 # Start gRPC server
@@ -79,7 +94,7 @@ def serve_grpc():
     health_pb2_grpc.add_HealthServicer_to_server(health.HealthServicer(), server)
     server.add_insecure_port('[::]:50051')
     server.start()
-    print('Starting User Service on port 50051...')
+    logging.info('Starting User Service on port 50051...')
     server.wait_for_termination()
 
 # Start Flask app (for health checks)

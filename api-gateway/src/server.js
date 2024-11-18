@@ -6,11 +6,11 @@ const protoLoader = require('@grpc/proto-loader');
 const path = require('path');
 const { createClient } = require('redis');
 const CircuitBreaker = require('opossum');
+const fs = require('fs');
+const winston = require('winston');
 
 // Read environment variables for hostnames
 const redisHost = process.env.REDIS_HOST || 'localhost';
-const userServiceHost = process.env.USER_SERVICE_HOST || 'localhost';
-const activityServiceHost = process.env.ACTIVITY_SERVICE_HOST || 'localhost';
 
 // Redis client
 const redisClient = createClient({
@@ -46,15 +46,59 @@ const userPackageDefinition = protoLoader.loadSync(userProtoPath, {
 const activityProto = grpc.loadPackageDefinition(activityPackageDefinition).activity_service;
 const userProto = grpc.loadPackageDefinition(userPackageDefinition).user_service;
 
-// Create gRPC clients
-const activityClient = new activityProto.ActivityService(
-    `${activityServiceHost}:50052`,
-    grpc.credentials.createInsecure()
-);
-const userClient = new userProto.UserService(
-    `${userServiceHost}:50051`,
-    grpc.credentials.createInsecure()
-);
+// List of User Service instances
+const userServiceInstances = [
+    { host: 'user-service-1', port: 50051 },
+    { host: 'user-service-2', port: 50051 },
+    { host: 'user-service-3', port: 50051 },
+];
+
+// List of Activity Service instances
+const activityServiceInstances = [
+    { host: 'activity-service-1', port: 50052 },
+    { host: 'activity-service-2', port: 50052 },
+    { host: 'activity-service-3', port: 50052 },
+];
+
+// Keep track of failed instances
+let failedUserInstances = {};
+let failedActivityInstances = {};
+
+// Function to get next available instance
+function getNextAvailableInstance(instances, failedInstances) {
+    return instances.find(instance => !failedInstances[instance.host]);
+}
+
+// Function to create gRPC client dynamically
+function createActivityClient(instance) {
+    return new activityProto.ActivityService(
+        `${instance.host}:${instance.port}`,
+        grpc.credentials.createInsecure()
+    );
+}
+
+function createUserClient(instance) {
+    return new userProto.UserService(
+        `${instance.host}:${instance.port}`,
+        grpc.credentials.createInsecure()
+    );
+}
+
+// Create logs directory
+const logsDir = path.join('/app', 'logs');
+if (!fs.existsSync(logsDir)) {
+    fs.mkdirSync(logsDir);
+}
+
+// Configure logger
+const logger = winston.createLogger({
+    level: 'info',
+    format: winston.format.json(),
+    defaultMeta: { service: 'api-gateway' },
+    transports: [
+        new winston.transports.File({ filename: '/app/logs/api-gateway.log' }),
+    ],
+});
 
 // Express app
 const app = express();
@@ -65,53 +109,163 @@ app.get('/status', (req, res) => {
     res.json({ status: 'API Gateway Running' });
 });
 
-// Function to wrap gRPC call for Circuit Breaker
+// Function to wrap gRPC call for Circuit Breaker with reroute logic
 function startWorkoutSessionGrpcCall(request) {
     return new Promise((resolve, reject) => {
-        activityClient.StartWorkoutSession(request, (err, response) => {
-            if (err) {
-                return reject(err);
-            }
-            resolve(response);
-        });
+        let attempts = 0;
+        let maxAttempts = 3;
+        let instancesTried = 0;
+        const maxInstancesToTry = 3;
+
+        const tryInstance = (instance) => {
+            const client = createActivityClient(instance);
+            client.StartWorkoutSession(request, (err, response) => {
+                if (err) {
+                    attempts++;
+                    if (attempts < maxAttempts) {
+                        logger.info(`Retrying instance ${instance.host}, attempt ${attempts}`);
+                        tryInstance(instance);
+                    } else {
+                        failedActivityInstances[instance.host] = true;
+                        logger.error(`Instance ${instance.host} marked as failed`);
+                        instancesTried++;
+                        if (instancesTried < maxInstancesToTry) {
+                            const nextInstance = getNextAvailableInstance(activityServiceInstances, failedActivityInstances);
+                            if (nextInstance) {
+                                attempts = 0;
+                                tryInstance(nextInstance);
+                            } else {
+                                reject(new Error('All instances failed'));
+                            }
+                        } else {
+                            reject(new Error('All instances failed'));
+                        }
+                    }
+                } else {
+                    failedActivityInstances = {};
+                    resolve(response);
+                }
+            });
+        };
+
+        const initialInstance = getNextAvailableInstance(activityServiceInstances, failedActivityInstances);
+        if (initialInstance) {
+            tryInstance(initialInstance);
+        } else {
+            reject(new Error('No available instances'));
+        }
     });
 }
 
 // Circuit breaker options
 const options = {
-    timeout: 5000, // 5 seconds
-    errorThresholdPercentage: 50, // When 50% of requests fail
-    resetTimeout: 17500, // 17.5 seconds
+    timeout: 5000, // Time before a request is considered failed
+    errorThresholdPercentage: 50, // Percentage of failed requests before opening the circuit
+    resetTimeout: 10000, // Time before attempting to close the circuit
 };
 
 // Create the circuit breaker
 const breaker = new CircuitBreaker(startWorkoutSessionGrpcCall, options);
 
 // Handle circuit breaker events
-breaker.on('open', () => console.log('Circuit breaker opened'));
-breaker.on('halfOpen', () => console.log('Circuit breaker half-open'));
-breaker.on('close', () => console.log('Circuit breaker closed'));
+breaker.on('open', () => logger.warn('Circuit breaker opened'));
+breaker.on('halfOpen', () => logger.info('Circuit breaker half-open'));
+breaker.on('close', () => logger.info('Circuit breaker closed'));
 
-// Register User
+// Register User with reroute logic
 app.post('/users/register', (req, res) => {
     const { username, email, password, goal } = req.body;
-    userClient.RegisterUser({ username, email, password, goal }, (err, response) => {
-        if (err) {
-            return res.status(500).json({ error: err.message });
-        }
-        res.json(response);
-    });
+
+    let attempts = 0;
+    let maxAttempts = 3;
+    let instancesTried = 0;
+    const maxInstancesToTry = 3;
+
+    const tryInstance = (instance) => {
+        const client = createUserClient(instance);
+        client.RegisterUser({ username, email, password, goal }, (err, response) => {
+            if (err) {
+                attempts++;
+                if (attempts < maxAttempts) {
+                    logger.info(`Retrying instance ${instance.host}, attempt ${attempts}`);
+                    tryInstance(instance);
+                } else {
+                    failedUserInstances[instance.host] = true;
+                    logger.error(`Instance ${instance.host} marked as failed`);
+                    instancesTried++;
+                    if (instancesTried < maxInstancesToTry) {
+                        const nextInstance = getNextAvailableInstance(userServiceInstances, failedUserInstances);
+                        if (nextInstance) {
+                            attempts = 0;
+                            tryInstance(nextInstance);
+                        } else {
+                            res.status(500).json({ error: 'All instances failed' });
+                        }
+                    } else {
+                        res.status(500).json({ error: 'All instances failed' });
+                    }
+                }
+            } else {
+                failedUserInstances = {};
+                res.json(response);
+            }
+        });
+    };
+
+    const initialInstance = getNextAvailableInstance(userServiceInstances, failedUserInstances);
+    if (initialInstance) {
+        tryInstance(initialInstance);
+    } else {
+        res.status(500).json({ error: 'No available instances' });
+    }
 });
 
-// Get User Goal
+// Get User Goal with reroute logic
 app.get('/users/:id/goal', (req, res) => {
     const user_id = req.params.id;
-    userClient.GetUserGoal({ user_id }, (err, response) => {
-        if (err) {
-            return res.status(500).json({ error: err.message });
-        }
-        res.json(response);
-    });
+
+    let attempts = 0;
+    let maxAttempts = 3;
+    let instancesTried = 0;
+    const maxInstancesToTry = 3;
+
+    const tryInstance = (instance) => {
+        const client = createUserClient(instance);
+        client.GetUserGoal({ user_id }, (err, response) => {
+            if (err) {
+                attempts++;
+                if (attempts < maxAttempts) {
+                    logger.info(`Retrying instance ${instance.host}, attempt ${attempts}`);
+                    tryInstance(instance);
+                } else {
+                    failedUserInstances[instance.host] = true;
+                    logger.error(`Instance ${instance.host} marked as failed`);
+                    instancesTried++;
+                    if (instancesTried < maxInstancesToTry) {
+                        const nextInstance = getNextAvailableInstance(userServiceInstances, failedUserInstances);
+                        if (nextInstance) {
+                            attempts = 0;
+                            tryInstance(nextInstance);
+                        } else {
+                            res.status(500).json({ error: 'All instances failed' });
+                        }
+                    } else {
+                        res.status(500).json({ error: 'All instances failed' });
+                    }
+                }
+            } else {
+                failedUserInstances = {};
+                res.json(response);
+            }
+        });
+    };
+
+    const initialInstance = getNextAvailableInstance(userServiceInstances, failedUserInstances);
+    if (initialInstance) {
+        tryInstance(initialInstance);
+    } else {
+        res.status(500).json({ error: 'No available instances' });
+    }
 });
 
 // Start Workout Session with Circuit Breaker
@@ -129,43 +283,117 @@ app.post('/workouts/start', (req, res) => {
         });
 });
 
-// Start Group Workout Session
+// Start Group Workout Session with reroute logic
 app.post('/workouts/group/start', (req, res) => {
     const { user_id } = req.body;
-    activityClient.StartGroupWorkoutSession({ user_id }, (err, response) => {
-        if (err) {
-            return res.status(500).json({ error: err.message });
-        }
-        res.json(response);
-    });
+
+    let attempts = 0;
+    let maxAttempts = 3;
+    let instancesTried = 0;
+    const maxInstancesToTry = 3;
+
+    const tryInstance = (instance) => {
+        const client = createActivityClient(instance);
+        client.StartGroupWorkoutSession({ user_id }, (err, response) => {
+            if (err) {
+                attempts++;
+                if (attempts < maxAttempts) {
+                    logger.info(`Retrying instance ${instance.host}, attempt ${attempts}`);
+                    tryInstance(instance);
+                } else {
+                    failedActivityInstances[instance.host] = true;
+                    logger.error(`Instance ${instance.host} marked as failed`);
+                    instancesTried++;
+                    if (instancesTried < maxInstancesToTry) {
+                        const nextInstance = getNextAvailableInstance(activityServiceInstances, failedActivityInstances);
+                        if (nextInstance) {
+                            attempts = 0;
+                            tryInstance(nextInstance);
+                        } else {
+                            res.status(500).json({ error: 'All instances failed' });
+                        }
+                    } else {
+                        res.status(500).json({ error: 'All instances failed' });
+                    }
+                }
+            } else {
+                failedActivityInstances = {};
+                res.json(response);
+            }
+        });
+    };
+
+    const initialInstance = getNextAvailableInstance(activityServiceInstances, failedActivityInstances);
+    if (initialInstance) {
+        tryInstance(initialInstance);
+    } else {
+        res.status(500).json({ error: 'No available instances' });
+    }
 });
 
-// End Workout Session
+// End Workout Session with reroute logic
 app.post('/workouts/end', (req, res) => {
     const { session_id } = req.body;
-    activityClient.EndWorkoutSession({ session_id }, (err, response) => {
-        if (err) {
-            return res.status(500).json({ error: err.message });
-        }
-        res.json(response);
-    });
+
+    let attempts = 0;
+    let maxAttempts = 3;
+    let instancesTried = 0;
+    const maxInstancesToTry = 3;
+
+    const tryInstance = (instance) => {
+        const client = createActivityClient(instance);
+        client.EndWorkoutSession({ session_id }, (err, response) => {
+            if (err) {
+                attempts++;
+                if (attempts < maxAttempts) {
+                    logger.info(`Retrying instance ${instance.host}, attempt ${attempts}`);
+                    tryInstance(instance);
+                } else {
+                    failedActivityInstances[instance.host] = true;
+                    logger.error(`Instance ${instance.host} marked as failed`);
+                    instancesTried++;
+                    if (instancesTried < maxInstancesToTry) {
+                        const nextInstance = getNextAvailableInstance(activityServiceInstances, failedActivityInstances);
+                        if (nextInstance) {
+                            attempts = 0;
+                            tryInstance(nextInstance);
+                        } else {
+                            res.status(500).json({ error: 'All instances failed' });
+                        }
+                    } else {
+                        res.status(500).json({ error: 'All instances failed' });
+                    }
+                }
+            } else {
+                failedActivityInstances = {};
+                res.json(response);
+            }
+        });
+    };
+
+    const initialInstance = getNextAvailableInstance(activityServiceInstances, failedActivityInstances);
+    if (initialInstance) {
+        tryInstance(initialInstance);
+    } else {
+        res.status(500).json({ error: 'No available instances' });
+    }
 });
 
 // Start the HTTP server
 const HTTP_PORT = 8080;
 app.listen(HTTP_PORT, () => {
-    console.log(`API Gateway HTTP server running on port ${HTTP_PORT}`);
+    logger.info(`API Gateway HTTP server running on port ${HTTP_PORT}`);
 });
 
-// Start the WebSocket server on a different port
+// Start the WebSocket server on port 8081
 const WS_PORT = 8081;
 const wsServer = new WebSocket.Server({ port: WS_PORT }, () => {
-    console.log(`WebSocket server running on port ${WS_PORT}`);
+    logger.info(`WebSocket server running on port ${WS_PORT}`);
 });
 
 // WebSocket connection for group sessions
 wsServer.on('connection', (ws) => {
-    console.log('User connected via WebSocket');
+    logger.info('User connected via WebSocket');
 
     // Store user session data
     let session_id = null;
@@ -183,11 +411,10 @@ wsServer.on('connection', (ws) => {
                 ws.session_id = session_id;
                 ws.user_id = user_id;
 
-                console.log(`User ${user_id} joined session ${session_id}`);
+                logger.info(`User ${user_id} joined session ${session_id}`);
 
                 // Initialize session in Redis if not exists
                 try {
-                    // Use the new hGetAll method, which returns a Promise
                     const sessionData = await redisClient.hGetAll(`session:${session_id}`);
 
                     if (Object.keys(sessionData).length === 0) {
@@ -205,7 +432,7 @@ wsServer.on('connection', (ws) => {
                         }
                     }
                 } catch (err) {
-                    console.error('Redis error:', err);
+                    logger.error('Redis error:', err);
                 }
 
                 // Notify others in the session
@@ -234,11 +461,11 @@ wsServer.on('connection', (ws) => {
                 });
             }
         } catch (err) {
-            console.error('Error processing message:', err);
+            logger.error('Error processing message:', err);
         }
     });
 
     ws.on('close', () => {
-        console.log(`User ${user_id} disconnected`);
+        logger.info(`User ${user_id} disconnected`);
     });
 });
